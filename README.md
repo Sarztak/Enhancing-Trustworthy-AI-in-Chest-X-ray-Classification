@@ -22,33 +22,26 @@
 
 #### **Data Source**
 - **Dataset:**  
-  The project uses the **ChestX-ray14** dataset provided by the National Institutes of Health (NIH).
+  The project uses the **ChestX-ray14** dataset provided Paul Mooney and is available on Kaagle.
 
 - **Source:**  
-  The dataset can be downloaded from the official NIH repository:  
-  [ChestXray-NIHCC](https://nihcc.app.box.com/v/ChestXray-NIHCC).
+  The dataset can be downloaded from :  
+  [ChestXray](https://www.kaggle.com/datasets/paultimothymooney/chest-xray-pneumonia).
 
 #### **Dataset Contents**
 - **Images:**  
-  Over 112,000 frontal-view chest X-ray images, covering various conditions.
-- **Annotations:**  
-  The dataset contains 14 disease labels (e.g., pneumonia, effusion, atelectasis, etc.).
-- **Focus:**  
-  For this project, our focus is on pneumonia. The images are preprocessed (resized, normalized) and used as input for the model.
+  Over 5863 frontal-view chest X-ray images, covering various conditions and separate sets for testing and validation.
 
 #### **Prediction Task**
 - **Objective:**  
   The goal is to detect pneumonia from chest X-ray images. In our setup:
   - **Positive Class:** Pneumonia (the presence of pneumonia).
   - **Negative Class:** Normal (absence of pneumonia) or other conditions.
-- **Why Pneumonia:**  
-  Pneumonia is clinically significant, and early detection can drastically improve patient outcomes. Our system will not only classify images but also provide an uncertainty estimate to flag cases where the model's prediction might be unreliable.
 
 ---
 
 ### **Understanding MC Dropout**
 
-<!-- ![MC Dropout Example](images/mc_dropout_example.png) -->
 <img src="images/mc_dropout_example.png" alt="Alt text" width="600" height="500">
 
 *(Credits: Enhancing Deep Learning with Bayesian Inference by Dr. Matt Benatan, Jochem Gietema, Dr. Marian Schneider)*
@@ -56,7 +49,7 @@
 #### **What is MC Dropout?**
 
 - **Dropout:**  
-  Dropout is traditionally used to reduce over fitting in neural network. The main idea is that by randomly turning off(setting the weights to zero) neurons in a layer we force the model to consider other neurons to solve the problem. Therefore, the model is no longer dependent on just a small subset of neurons for prediction. 
+  Dropout is traditionally used to reduce over fitting in neural network. The main idea is that by randomly turning off (setting the weights to zero) neurons in a layer we force the model to consider other ways to solve the problem. Therefore, the model is no longer dependent on just a small subset of neurons for prediction. 
   
 - **MC Dropout:**  
   However, we can also use the randomness in the Dropout to induce stocasticity in the output during prediction.Thus MC Dropout is a technique that leverages dropout during inference to approximate Bayesian uncertainty.  
@@ -102,33 +95,28 @@ def mc_dropout_inference(imgs: np.ndarray, nb_inference: int, model: Sequential)
 
 #### **Integration in the Pipeline:**
 
-After obtaining the stacked predictions, you can compute the **predictive mean** and **variance** as follows:
+After obtaining the stacked predictions, we can compute the **predictive mean** and **variance** as follows:
 
 ```python
-# Assuming 'predictions' is the output from mc_dropout_inference
 predictive_mean = np.mean(predictions, axis=-1)
 predictive_variance = np.var(predictions, axis=-1)
 ```
 
 - **Predictive Mean:**  
-  Gives you the average prediction, which is used for the final classification decision.
+  Gives we the average prediction, which is used for the final classification decision.
   
 - **Predictive Variance:**  
   Provides a measure of the model’s uncertainty. A higher variance indicates that the model's predictions are inconsistent across runs, implying less confidence.
 
 ---
 
-Below is a suggested **section** you can include after your MC Dropout explanation, showcasing your **binned Mean vs. Variance** experiment and the observations you’ve made. This section will help your audience understand the nuances of how predictive mean and variance correlate (or fail to correlate) with model confidence and correctness.
-
----
-
 ### **Binned Mean vs. Variance Experiment**
 
-After implementing MC Dropout and obtaining multiple predictions for each X-ray, I wanted to investigate **how the predictive mean (confidence) relates to the predictive variance (uncertainty)**. Specifically, I aimed to test the hypothesis:
+After implementing MC Dropout and obtaining multiple predictions for each X-ray, we wanted to investigate **how the predictive mean (confidence) relates to the predictive variance (uncertainty)**. Specifically, we aimed to test the hypothesis:
 
 > *“If the model is misclassifying an image, it should exhibit high variance (i.e., be unsure). Conversely, if the variance is low, the model should be correct.”*
 
-To explore this, I grouped predictions by their **mean** into deciles (e.g., \([0, 0.1), [0.1, 0.2), \dots, [0.9, 1.0]\)) and plotted the **distribution of variance** for each bin. Below is the resulting **boxplot**, illustrating how variance changes with mean confidence.
+To explore this, we grouped predictions by their **mean** into deciles (e.g., \([0, 0.1), [0.1, 0.2), \dots, [0.9, 1.0]\)) and plotted the **distribution of variance** for each bin. Below is the resulting **boxplot**, illustrating how variance changes with mean confidence.
 
 <img src="images/binnedMean.png" alt="Alt text" width="700" height="500">
 
@@ -139,18 +127,18 @@ To explore this, I grouped predictions by their **mean** into deciles (e.g., \([
    - This small range can make it challenging to distinguish between “low” and “high” uncertainty from a purely numerical standpoint, because everything looks compressed near zero.
 
 2. **Higher Variance Around the Decision Boundary**  
-   - As you noted, the bins near ~0.5 mean predictions show higher variance.  
+   - The bins near ~0.5 mean predictions show higher variance.  
    - This is **expected behavior**: when the model is borderline between “pneumonia” and “normal,” the predictions across multiple MC Dropout runs fluctuate more.
 
 3. **Low Variance at the Extremes (Near 0 or 1)**  
-   - The first bin (0.0–0.1) and the last bin (0.9–1.0) both have **low variance**.  
+   - The first bin (0.0–0.1) and the last bin (0.9–1.0) both have **low variance**, though there is higher spread in the later case.  
    - This suggests the model is **confident** in these regions—sometimes correctly, but potentially **confidently wrong** for misclassifications.  
    - This finding challenges the idea that “all misclassifications must come with high variance.” Some errors can occur even when variance is minimal.
 
 4. **Potential Confident Misclassifications**  
    - The observation that some **low mean** bins (i.e., the model says “not pneumonia”) still have **low variance** indicates the model can be “confidently wrong.” This is a crucial finding, as it shows that **variance alone** might not always alert us to high-risk errors.
    - This is the **most concerning type of error** because it’s both **wrong** and **confident**.  
-   - Variance alone won’t always help you catch high-confidence errors, so it might be beneficial to explore **additional or alternative uncertainty measures** and investigate borderline cases in more detail.
+   - Variance alone won’t always help catch high-confidence errors, so it might be beneficial to explore **additional or alternative uncertainty measures** and investigate borderline cases in more detail.
 
 5. **Overall Magnitude of Variance**  
    - Even the “high” variance values are still quite small. This suggests that **variance alone** might not be enough to capture all forms of uncertainty—especially high-confidence errors.
@@ -164,7 +152,6 @@ To explore this, I grouped predictions by their **mean** into deciles (e.g., \([
   3. **Adversarial Analysis**: Check how adversarial examples affect mean/variance to see if high-confidence misclassifications can be forced or detected.
   4. **Consider a Log Scale**: If the variance is very small, plotting it on a **logarithmic scale** might make differences more visible.
 
-
 ---
 
 ### **Spatial Uncertainty Visualization**
@@ -173,7 +160,7 @@ To explore this, I grouped predictions by their **mean** into deciles (e.g., \([
 
 In our previous experiments, we examined the relationship between the predictive mean and variance across multiple MC Dropout runs. Our analysis revealed that predictive variance at the output level did not always correlate with misclassifications. In some cases, even images that were confidently classified (with mean predictions near 0 or 1) exhibited similarly low variance as those that were misclassified. This observation led us to question whether the uncertainty measured at the final output was capturing all the nuances of the model’s confidence.
 
-To address this, we turned our attention to the **spatial uncertainty**—the uncertainty present in the intermediate feature maps generated by the convolutional layers during dropout. By visualizing the uncertainty at the spatial level, we can:
+To address this, we turned our attention to the **spatial uncertainty**—the uncertainty present in the intermediate feature maps generated by the convolutional layers during dropout. By visualizing the uncertainty at the spatial level, we can aimed to :
 - **Highlight the specific regions** of an X-ray that the model finds ambiguous.
 - **Investigate high-confidence images** further to determine if there are localized areas of uncertainty that might explain misclassifications.
 - **Examine cases where the model is uncertain** (i.e., predictions between 0.4 and 0.6) to see if the convolutional layers provide insight into the ambiguity.
@@ -197,10 +184,10 @@ To address this, we turned our attention to the **spatial uncertainty**—the un
 #### **Step-by-Step Breakdown of Image Processing on the Feature Map**
 
 **1️⃣ Extracting the Feature Maps (Uncertainty Computation)**
-After running MC Dropout, you extract feature maps from different layers.  
+After running MC Dropout, we extract feature maps from different layers.  
 For each convolutional layer:  
-- You compute the **mean feature map** (average activation).  
-- You compute the **uncertainty map** (variance across multiple MC Dropout runs).  
+- we compute the **mean feature map** (average activation).  
+- we compute the **uncertainty map** (variance across multiple MC Dropout runs).  
 
 🔹 **Issue Here:** The variance values are usually **very small** (e.g., in the range of `0.0001` to `0.01`). These small values don't map well to an image scale (0-255).  
 
@@ -211,7 +198,7 @@ For each convolutional layer:
 mean_uncer_map = np.mean(uncertainty_map, axis=-1)
 ```
 - If the uncertainty map is **multi-channel** (e.g., `(H, W, C)`), this step collapses it into **a single-channel grayscale** uncertainty map of shape `(H, W)`.  
-- **Effect:** Some spatial information is lost, but you now have a single uncertainty value per pixel.
+- **Effect:** Some spatial information is lost, but we now have a single uncertainty value per pixel.
 
 ---
 
@@ -219,8 +206,6 @@ mean_uncer_map = np.mean(uncertainty_map, axis=-1)
 ```python
 uncertainty_map_resized = cv2.resize(mean_uncer_map, (256, 256), interpolation=cv2.INTER_LINEAR)
 ```
-- **What Happens?**
-  - If the original feature map is **smaller than (256, 256)**, this enlarges it.
   - If it’s **already 256×256**, this does nothing.
 - **Effect:** Some pixel values might get interpolated, smoothing the uncertainty map.
 
@@ -251,7 +236,7 @@ _, binary_mask = cv2.threshold(uncertainty_map_resized, threshold, 255, cv2.THRE
   - Any pixel **above `threshold`** → Set to `255` (white).
 - **Effect:** This creates a **binary mask** where only high-uncertainty areas are white.
 
-🔹 **Potential Issue:** If `threshold` is too **high**, almost everything might be `0`, and you won't see much in the heatmap.
+🔹 **Potential Issue:** If `threshold` is too **high**, almost everything might be `0`, and we won't see much in the heatmap.
 
 ---
 
@@ -301,17 +286,6 @@ To determine whether spatial uncertainty—visualized through uncertainty heatma
 1. **Image Selection:**  
    - We selected a set of chest X-ray images that the model classified as normal with high confidence (predicted probability near 0.03).
 
-2. **Uncertainty Extraction:**  
-   - For each image, we used MC Dropout to extract feature maps from multiple convolutional layers (e.g., `conv2d_10`, `conv2d_11`, and `conv2d_12`).
-   - We computed the variance across multiple stochastic passes for each layer to quantify spatial uncertainty.
-
-3. **Heatmap Generation and Overlay:**  
-   - The resulting uncertainty maps were resized to match the original X-ray dimensions (256×256 pixels).
-   - A color map (e.g., JET) was applied to the normalized uncertainty maps, and regions with variance above a certain threshold were highlighted.
-   - Finally, these heatmaps were overlaid on the original images to visualize where the model might be uncertain.
-
-
-
 **Results and Observations:**  
 
 ### 1. **prediction interval = (0.048, 0.051) -> Normal**
@@ -338,7 +312,7 @@ To determine whether spatial uncertainty—visualized through uncertainty heatma
   - A lower threshold tended to flag even minor uncertainty, while a higher threshold sometimes failed to capture subtle, yet potentially critical, ambiguous regions.
 
 **Conclusion:**  
-These results indicate that spatial uncertainty visualization can be informative, but its effectiveness depends on careful calibration of the threshold used to flag high uncertainty. The fact that some high-confidence predictions (with very low mean values) also exhibited low variance suggests that the model can sometimes be confidently wrong without displaying marked spatial uncertainty. Conversely, regions with higher uncertainty around the decision boundary (mean predictions near 0.5) behave as expected.
+These results indicate that spatial uncertainty visualization can be informative, but its effectiveness depends on careful calibration of the threshold used to flag high uncertainty. The fact that some high-confidence predictions (with very low mean values) also exhibited low variance suggests that the model can sometimes be confidently wrong without displaying marked spatial uncertainty. 
 
 **Next Steps:**  
 - **Parameter Tuning:** Further experiments are needed to determine robust, data-driven thresholds for flagging uncertainty.
@@ -356,7 +330,7 @@ Showcase how MC Dropout not only provides uncertainty estimation but also impart
 **Experiment Outline:**
 
 1. **Adversarial Perturbation without MC Dropout:**  
-   - Take a test image and apply a perturbation (using FGSM or another adversarial method) on a deterministic version of your model (i.e., dropout disabled).
+   - Take a test image and apply a perturbation (using FGSM or another adversarial method) on a deterministic version of wer model (i.e., dropout disabled).
    - Record the model’s output (prediction probability) on this perturbed image.
   
 2. **Adversarial Perturbation with MC Dropout:**  
